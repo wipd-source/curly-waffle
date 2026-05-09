@@ -1,0 +1,51 @@
+name: RPC Health Check
+
+on:
+  schedule:
+    # Run every 6 hours
+    - cron: "0 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      verbose:
+        description: "Enable verbose output"
+        required: false
+        default: "false"
+        type: boolean
+
+jobs:
+  rpc-health:
+    name: RPC Health Check
+    runs-on: ubuntu-latest
+    environment: e2e-testing
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      - name: Run RPC health check
+        env:
+          NOTEBOOKLM_AUTH_JSON: ${{ secrets.NOTEBOOKLM_AUTH_JSON }}
+          NOTEBOOKLM_READ_ONLY_NOTEBOOK_ID: ${{ vars.NOTEBOOKLM_READ_ONLY_NOTEBOOK_ID }}
+        run: |
+          VERBOSE=${{ inputs.verbose || 'false' }}
+          if [ "$VERBOSE" = "true" ]; then
+            uv run python scripts/check_rpc_health.py --verbose
+          else
+            uv run python scripts/check_rpc_health.py
+          fi
+
+      - name: Report status
+        if: always()
+        run: |
+          echo "RPC health check completed with status: ${{ job.status }}"

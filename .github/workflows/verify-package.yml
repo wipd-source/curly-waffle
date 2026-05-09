@@ -1,0 +1,70 @@
+name: Verify Package
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to verify (e.g., 0.2.3)"
+        required: true
+      source:
+        description: "Package source"
+        required: true
+        default: "pypi"
+        type: choice
+        options:
+          - pypi
+          - testpypi
+
+jobs:
+  verify:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ["3.10", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install from PyPI
+        if: inputs.source == 'pypi'
+        run: |
+          uv venv
+          uv pip install notebooklm-py==${{ inputs.version }}
+
+      - name: Install from TestPyPI
+        if: inputs.source == 'testpypi'
+        run: |
+          uv venv
+          uv pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ notebooklm-py==${{ inputs.version }}
+
+      - name: Verify CLI works
+        run: |
+          uv run notebooklm --version
+          uv run notebooklm --help
+
+      - name: Verify imports work
+        run: |
+          uv run python -c "from notebooklm import NotebookLMClient; print('Import OK')"
+          uv run python -c "from notebooklm.types import Notebook, Source; print('Types OK')"
+
+      - name: Verify skill data
+        run: |
+          uv run python -c "
+          import importlib.resources
+          import notebooklm.data
+          skill_path = importlib.resources.files(notebooklm.data) / 'SKILL.md'
+          content = skill_path.read_text()
+          assert 'notebooklm' in content.lower()
+          print('SKILL.md OK')
+          codex_path = importlib.resources.files(notebooklm.data) / 'CODEX.md'
+          codex_content = codex_path.read_text()
+          assert len(codex_content) > 100
+          print('CODEX.md OK')
+          "

@@ -1,0 +1,57 @@
+name: Nightly E2E Tests
+
+on:
+  schedule:
+    # Main branch runs nightly at 2am UTC
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+    inputs:
+      test_filter:
+        description: "Pytest filter (e.g. tests/e2e/test_notebooks.py)"
+        required: false
+        default: "tests/e2e"
+      extra_args:
+        description: "Extra pytest args"
+        required: false
+        default: ""
+
+jobs:
+  e2e-tests:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+    environment: e2e-testing
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: |
+          uv sync --extra dev --extra browser
+          uv run playwright install chromium
+
+      - name: Run E2E tests
+        env:
+          NOTEBOOKLM_AUTH_JSON: ${{ secrets.NOTEBOOKLM_AUTH_JSON }}
+          NOTEBOOKLM_READ_ONLY_NOTEBOOK_ID: ${{ vars.NOTEBOOKLM_READ_ONLY_NOTEBOOK_ID }}
+          NOTEBOOKLM_GENERATION_NOTEBOOK_ID: ${{ vars.NOTEBOOKLM_GENERATION_NOTEBOOK_ID }}
+        run: |
+          uv run pytest ${{ inputs.test_filter || 'tests/e2e' }} \
+            -m e2e \
+            --timeout=300 \
+            -v \
+            ${{ inputs.extra_args }}
+
+      - name: Report results
+        if: always()
+        run: |
+          echo "E2E test run completed"
+          echo "Status: ${{ job.status }}"
